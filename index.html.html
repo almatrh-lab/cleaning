@@ -1,0 +1,1043 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ANEW 週次清掃当番表</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #ffffff; }
+  body { font-family: 'Hiragino Kaku Gothic ProN','Yu Gothic',sans-serif; }
+  #root { min-height: 100vh; }
+  details > summary { list-style: none; }
+  details > summary::-webkit-details-marker { display: none; }
+</style>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+<div style="position:fixed;top:10px;left:10px;z-index:2147483647;display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:6px 12px;box-shadow:0 4px 14px rgba(16,24,40,.18);font-family:-apple-system,'Hiragino Kaku Gothic ProN','Noto Sans JP',sans-serif">
+  <svg width="24" height="24" viewBox="0 0 64 64" style="display:block"><path d="M32 6 L58 54 L6 54 Z" fill="none" stroke="#16A34A" stroke-width="5" stroke-linejoin="round"/><path d="M34 28 L48 52 L20 52 Z" fill="none" stroke="#16A34A" stroke-width="4" stroke-linejoin="round"/></svg>
+  <span style="font-weight:800;color:#0F172A;font-size:15px;letter-spacing:.5px">new</span>
+  <a href="https://anew-shift.vercel.app/" style="margin-left:4px;display:inline-flex;align-items:center;gap:5px;background:#1C3D2F;color:#fff;text-decoration:none;font-size:12.5px;font-weight:700;padding:6px 12px;border-radius:999px">&larr; ANEWアプリに戻る</a>
+</div>
+
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+
+// ── React フックをグローバルから取得 ──
+const { useState, useEffect, useCallback } = React;
+
+// ── 保存の仕組み：Googleスプレッドシートに全員共有で保存 ──
+// 下のURLは、Google Apps Scriptで発行したウェブアプリのURL。
+const GAS_URL = "https://script.google.com/macros/s/AKfycbwEx-cYEyCUEaOlqWQdF7UreSdwwDqp9nKyiUA0dDQZwOGugRMJySOUfSZtF02Vn-jbKg/exec";
+
+// 読み込み：JSONP方式（CORS制約を回避してスプレッドシートのデータを取得）
+function gasLoad() {
+  return new Promise((resolve) => {
+    const cb = "gascb_" + Date.now() + "_" + Math.floor(Math.random() * 100000);
+    const cleanup = (script) => { try { delete window[cb]; script.remove(); } catch (e) {} };
+    const timeout = setTimeout(() => { resolve(null); }, 15000);
+    window[cb] = (data) => {
+      clearTimeout(timeout);
+      resolve(data);
+      const sc = document.getElementById(cb);
+      if (sc) cleanup(sc);
+    };
+    const script = document.createElement("script");
+    script.id = cb;
+    script.src = GAS_URL + "?callback=" + cb + "&t=" + Date.now();
+    script.onerror = () => { clearTimeout(timeout); resolve(null); cleanup(script); };
+    document.body.appendChild(script);
+  });
+}
+
+// 書き込み：POST送信（no-corsで保存。応答は読めないが保存は実行される）
+function gasSave(payload) {
+  return fetch(GAS_URL, {
+    method: "POST",
+    mode: "no-cors",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: payload,
+  }).then(() => true).catch(() => false);
+}
+
+// 既存コードと同じ get/set インターフェースで包む
+const sheetStorage = {
+  async get(key) {
+    const data = await gasLoad();
+    if (data == null) return null;
+    // dataはオブジェクト。保存時の文字列に戻して返す
+    try { return { key, value: JSON.stringify(data) }; }
+    catch (e) { return null; }
+  },
+  async set(key, value) {
+    await gasSave(value);
+    return { key, value };
+  },
+};
+
+
+// ─────────────────────────────────────────────────────────
+//  掃除当番管理アプリ
+//  - A〜I の9週ローテーション（毎週自動進行 + 手動切替）
+//  - メンバーの追加 / 削除 / 改名
+//  - 欠勤チェック → 担当箇所をハイライト → 代替を手動アサイン
+//  - データは全員共有で保存（window.storage shared）
+// ─────────────────────────────────────────────────────────
+
+// エリア定義（清掃マニュアル準拠）。
+// 各エリアは need 人ぶんの「持ち場(slot)」を持ち、ローテーションのスロット順に1人1持ち場で割り当てる。
+// rank=優先度(S/A/B/C), icon=場所に合わせた絵文字, time=想定時間
+// tasks=やること, minTasks=欠員時の最低限, skip=やらなくてよいこと, done=完了基準
+const AREAS = [
+  { id: 4, name: "④1F・2F 男性トイレ", need: 1, rank: "S", time: "20〜30分", slots: [
+    { icon: "🚹", place: "1F・2F 男性トイレ",
+      tasks: ["便器内をブラシで清掃", "便座・便器まわりを拭く", "床の目立つ汚れを掃除", "ドアノブ・鍵・レバーを拭く", "トイレットペーパー残量確認", "ハンドソープ残量確認", "におい・水漏れ・詰まり確認"],
+      minTasks: ["便器内の清掃", "便座・便器まわりの拭き掃除", "床の目立つ汚れ確認", "紙・ソープ確認", "異臭・水漏れ・詰まり確認"],
+      skip: ["壁全体の拭き掃除", "換気扇まわり", "洗濯機排水まわり", "細かい水アカ落とし"],
+      done: ["便器・便座まわりが清潔", "床に目立つ汚れがない", "紙・ソープが切れていない", "異常があれば報告できている"] },
+  ]},
+  { id: 5, name: "⑤2F 女子トイレ", need: 1, rank: "S", time: "15〜25分", slots: [
+    { icon: "🚺", place: "2F 女子トイレ",
+      tasks: ["便器内をブラシで清掃", "便座・便器まわりを拭く", "床の目立つ汚れを掃除", "ドアノブ・鍵・レバーを拭く", "トイレットペーパー残量確認", "ハンドソープ残量確認", "サニタリーボックス確認", "におい・水漏れ・詰まり確認"],
+      minTasks: ["便器内の清掃", "便座・便器まわりの拭き掃除", "床の目立つ汚れ確認", "紙・ソープ確認", "サニタリーボックス確認", "異臭・水漏れ・詰まり確認"],
+      skip: ["壁全体の拭き掃除", "換気扇まわり", "排水まわりの細かい確認", "細かい水アカ落とし"],
+      done: ["便器・便座まわりが清潔", "床に目立つ汚れがない", "サニタリーボックス確認済", "異常があれば報告できている"] },
+  ]},
+  { id: 10, name: "⑩外階段・エントランス・外駐車場・ゴミまとめ", need: 2, rank: "S", time: "30分固定", slots: [
+    { icon: "🪜", place: "Aさん：外階段・エントランス・外駐車場",
+      tasks: ["お客様用外階段を掃く", "エントランスのゴミを拾う", "エントランスの砂・落ち葉を掃く", "外駐車場の目立つゴミを拾う", "入口まわりの見た目確認", "外階段の滑りやすい汚れ確認"],
+      minTasks: ["外階段を掃く", "エントランスの目立つゴミ拾い", "外駐車場の目立つゴミだけ拾う"],
+      skip: ["駐車場全体の掃き掃除", "建物外周すべての清掃", "外洗濯機まわりの細かい清掃", "雑草処理", "外壁清掃"],
+      done: ["外階段がきれいに見える", "エントランスに目立つゴミがない", "外駐車場に目立つゴミがない"] },
+    { icon: "🗑️", place: "Bさん：ゴミ回収・段ボール・備品",
+      tasks: ["各場所のゴミ袋を回収", "シュレッダーゴミを回収", "段ボールを指定場所へ出す", "ゴミ置き場の散乱確認", "ゴミ袋など備品の残数確認", "外の不要物確認"],
+      minTasks: ["各場所のゴミ袋を回収", "段ボールを指定場所へ出す"],
+      skip: ["駐車場全体の掃き掃除", "建物外周すべての清掃", "雑草処理", "外壁清掃"],
+      done: ["各場所のゴミが回収済", "段ボールが指定場所にまとまっている", "ゴミ置き場が散乱していない"] },
+  ]},
+  { id: 8, name: "⑧2F 入口・窓", need: 1, rank: "S", time: "15〜25分", slots: [
+    { icon: "🪟", place: "2F 入口・窓",
+      tasks: ["2F入口ドアガラスを拭く", "来客から見える窓を拭く", "手あかが目立つ窓だけ拭く", "2Fエントランスの見た目確認", "サッシ・レールの大きなゴミを取る", "来客導線の不要物確認"],
+      minTasks: ["2F入口ドアガラスを拭く", "手あかが目立つ窓だけ拭く", "来客導線の不要物確認"],
+      skip: ["全ての窓を拭くこと", "サッシ・レールの細かい清掃", "外側の窓掃除", "壁や床の本格清掃"],
+      done: ["2F入口ドアガラスがきれい", "手あかが目立たない", "2Fエントランスの見た目が整っている", "来客導線に不要物がない"] },
+  ]},
+  { id: 6, name: "⑥2F キッチン", need: 1, rank: "A", time: "20〜30分", slots: [
+    { icon: "🚰", place: "2F キッチン",
+      tasks: ["シンク内を清掃", "排水ネットを交換", "水切り台を拭く", "シンク台を拭く", "蛇口まわりの水アカを軽く拭く", "電子レンジの外側を拭く", "冷蔵庫の外側を拭く", "洗剤・スポンジ・キッチンペーパー残量確認", "放置食器・ゴミの確認"],
+      minTasks: ["シンク内の清掃", "排水ネット交換", "放置食器・ゴミの確認", "備品不足の確認"],
+      skip: ["冷蔵庫内の整理", "電子レンジ内の本格清掃", "賞味期限切れ確認", "排水まわりの分解清掃"],
+      done: ["シンク内に汚れ・ゴミが残っていない", "排水ネットが交換済", "水まわりが清潔に見える", "備品不足があれば報告できている"] },
+  ]},
+  { id: 2, name: "②1F 発送台エリア", need: 2, rank: "A", time: "25〜30分", slots: [
+    { icon: "📦", place: "Aさん：掃除担当",
+      tasks: ["1Fフロアの目立つゴミを掃く", "発送台まわりのゴミ・ほこり回収", "玄関付近を掃く", "踊り場の目立つゴミを掃く", "玄関マットのゴミを払う", "来客導線の見た目確認"],
+      minTasks: ["通路確保", "発送台まわりの目立つゴミ回収", "来客導線の目立つゴミ"],
+      skip: ["フロア全体を完璧に掃くこと", "段ボールの細かい仕分け", "棚の中身を全部整理"],
+      done: ["玄関付近がきれいに見える", "発送台まわりに目立つゴミがない", "通路がふさがっていない"] },
+    { icon: "🧰", place: "Bさん：整理・段ボール・ストック",
+      tasks: ["通路の物を端に寄せる", "段ボールを指定場所へ移動", "不要資材をまとめる", "発送台上の不要物を整理", "梱包資材・ストックのはみ出しを整える", "通路がふさがっていないか確認"],
+      minTasks: ["通路確保", "段ボールを指定場所へ寄せる", "梱包資材・ストックのはみ出しを戻す"],
+      skip: ["段ボールの細かい仕分け", "ストックの数量確認", "判断が必要な物の処分"],
+      done: ["段ボール・不要資材が指定場所にまとまっている", "梱包資材・ストックがはみ出していない", "通路がふさがっていない"] },
+  ]},
+  { id: 7, name: "⑦屋内階段・通路", need: 1, rank: "A", time: "20〜30分", slots: [
+    { icon: "🪜", place: "屋内階段・通路",
+      tasks: ["屋内階段の目立つゴミを掃除機で取る", "通路のゴミ・ほこり回収", "手すりを拭く", "通行の邪魔になる物をどかす", "階段の角・隅の目立つゴミ確認"],
+      minTasks: ["通路の邪魔な物をどかす", "手すりを拭く", "階段・通路の目立つゴミを回収"],
+      skip: ["階段全体の水拭き", "壁際の細かいほこり取り", "滑り止め部分の本格清掃", "放置物の処分判断"],
+      done: ["階段・通路に目立つゴミがない", "手すりが拭かれている", "通行の邪魔な物がない", "安全に通れる状態"] },
+  ]},
+  { id: 3, name: "③2F フロア全体・MTGスペース", need: 2, rank: "B", time: "25〜30分", slots: [
+    { icon: "🪑", place: "Aさん：掃除担当",
+      tasks: ["MTG机を拭く", "MTGイスを拭く", "来客スペースの机・イスを拭く", "2Fフロアの目立つゴミを掃除機で取る", "2F玄関付近の目立つゴミ清掃", "玄関マットのゴミを払う"],
+      minTasks: ["MTG机を拭く", "イスを整える", "来客スペースの見た目を整える", "目立つゴミだけ掃除機"],
+      skip: ["2F全体を完璧に掃除機がけ", "書類・私物の整理", "ホワイトボードを勝手に消す"],
+      done: ["MTG机・イスがきれい", "来客スペースの見た目が整っている", "通路に邪魔な物がない"] },
+    { icon: "🧹", place: "Bさん：整理・見た目担当",
+      tasks: ["MTG机上の放置物を端に寄せる", "来客スペースの見た目を整える", "イスの並びを整える", "床・通路の放置物を移動", "ホワイトボード・備品まわりを整える", "棚・ストックの通路はみ出し確認"],
+      minTasks: ["来客スペースの見た目を整える", "MTG机の上を整理", "イスの並び", "通路の放置物移動"],
+      skip: ["棚や収納の中の整理", "ストックの数量確認", "ホワイトボードの内容を消す"],
+      done: ["来客スペースの見た目が整っている", "棚・ストックが通路にはみ出していない", "外部の人が見ても違和感のない状態"] },
+  ]},
+  { id: 1, name: "①2F デスクフロア", need: 1, rank: "B", time: "15〜25分", slots: [
+    { icon: "🖥️", place: "2F デスクフロア",
+      tasks: ["共用テーブルを拭く", "共用イスを拭く", "デスク上を拭ける範囲だけ軽く拭く", "デスク下のゴミ確認", "スイッチ・ドアノブなど手が触れる場所を拭く", "デスクフロアの窓の手あかが目立つ範囲だけ拭く", "共有棚・ストック棚のはみ出しを整える", "備品不足確認"],
+      minTasks: ["共用テーブルを拭く", "共用イスを拭く", "デスク下の目立つゴミ確認", "窓の手あかが目立つ部分だけ拭く", "棚・ストックのはみ出しだけ戻す"],
+      skip: ["個人デスクの整理整頓", "私物・書類の移動", "窓全面の本格清掃", "配線まわりの細かい清掃"],
+      done: ["共用テーブル・イスがきれい", "デスクまわりに目立つゴミがない", "窓の手あかが目立たない", "棚・ストックが通路にはみ出していない"] },
+  ]},
+  { id: 9, name: "⑨1F FBAルーム", need: 1, rank: "C", time: "20〜30分", slots: [
+    { icon: "🏷️", place: "1F FBAルーム",
+      tasks: ["FBAルームの目立つゴミを掃く", "棚まわりのゴミを回収", "棚下の目立つゴミを回収", "商品・備品のはみ出しを直す", "通路を確保する", "段ボール・不要資材を指定場所へ移動", "棚・ストックの崩れ確認", "通路側のはみ出しを中に戻す"],
+      minTasks: ["通路確保", "商品・備品・ストックのはみ出しを戻す", "目立つゴミだけ回収"],
+      skip: ["棚上のほこり取り", "棚下の奥までの清掃", "ストックの数量確認", "長期放置物の判断"],
+      done: ["通路が確保されている", "商品・備品・ストックが通路にはみ出していない", "棚・ストックが大きく崩れていない", "目立つゴミがない"] },
+  ]},
+];
+
+// 旧エリア番号(掃除表) → AREASインデックスの対応（ローテーション割当用）
+// ローテーション表は旧①〜⑩の並びなので、その順にエリアを引くためのマップ
+const ROTATION_AREA_ORDER = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]; // 旧番号順
+const AREA_BY_ID = Object.fromEntries(AREAS.map((a) => [a.id, a]));
+
+// ローテーション表（A〜I × エリア1〜10）元データそのまま
+// 各セルは担当者名の配列
+const ROTATION = {
+  A: [["張田"], ["黄倉", "大城"], ["花岡", "荒井"], ["斎藤(恵)"], ["佐藤"], ["字見"], ["小林"], ["柏村"], ["常盤"], ["越本", "斎藤(修)"]],
+  B: [["黄倉"], ["大城", "花岡"], ["荒井", "佐藤"], ["越本"], ["字見"], ["小林"], ["柏村"], ["常盤"], ["張田"], ["斎藤(恵)", "斎藤(修)"]],
+  C: [["大城"], ["花岡", "荒井"], ["佐藤", "字見"], ["斎藤(修)"], ["小林"], ["柏村"], ["常盤"], ["張田"], ["黄倉"], ["斎藤(恵)", "越本"]],
+  D: [["花岡"], ["荒井", "佐藤"], ["字見", "小林"], ["斎藤(恵)"], ["柏村"], ["常盤"], ["張田"], ["黄倉"], ["大城"], ["越本", "斎藤(修)"]],
+  E: [["荒井"], ["佐藤", "字見"], ["小林", "柏村"], ["越本"], ["常盤"], ["張田"], ["黄倉"], ["大城"], ["花岡"], ["斎藤(恵)", "斎藤(修)"]],
+  F: [["佐藤"], ["字見", "小林"], ["常盤"], ["斎藤(修)"], ["張田"], ["黄倉"], ["大城"], ["花岡"], ["荒井"], ["斎藤(恵)", "越本"]],
+  G: [["字見"], ["小林", "柏村"], ["常盤", "張田"], ["斎藤(恵)"], ["黄倉"], ["大城"], ["花岡"], ["荒井"], ["佐藤"], ["越本", "斎藤(修)"]],
+  H: [["小林"], ["柏村", "常盤"], ["張田", "黄倉"], ["越本"], ["大城"], ["花岡"], ["荒井"], ["佐藤"], ["字見"], ["斎藤(恵)", "斎藤(修)"]],
+  I: [["柏村"], ["常盤", "張田"], ["黄倉", "大城"], ["斎藤(修)"], ["花岡"], ["荒井"], ["佐藤"], ["字見"], ["小林"], ["斎藤(恵)", "越本"]],
+};
+
+const GROUP_KEYS = ["A", "B", "C", "D", "E", "F", "G", "H", "I"];
+
+// 略称キー → フルネーム表示の対応表
+// ROTATION のキーはそのまま（略称）。表示時にこの表でフルネーム化する。
+const FULL_NAME = {
+  "張田": "張田 弓枝",
+  "黄倉": "黄倉 真那美",
+  "大城": "大城 唯",
+  "花岡": "花岡 絵美",
+  "荒井": "荒井 千春",
+  "佐藤": "佐藤 沙耶香",
+  "字見": "字見 千尋",
+  "小林": "小林 優美",
+  "柏村": "柏村 美智留",
+  "常盤": "常盤 琴音",
+  "斎藤(恵)": "斎藤 恵介",
+  "斎藤(修)": "斎藤 修平",
+  "越本": "越本 悠生",
+  "鈴木": "鈴木 慎一朗",
+};
+
+// 全メンバー初期リスト（略称キー）。鈴木はローテーション外の在籍メンバー。
+const INITIAL_MEMBERS = ["張田", "黄倉", "大城", "花岡", "荒井", "佐藤", "字見", "小林", "柏村", "常盤", "斎藤(恵)", "斎藤(修)", "越本", "鈴木"];
+
+// ── anew-shift シフト連携 ──
+const ATTEND_URL = "https://anew-shift.vercel.app/api/attendance";
+// 氏名正規化（空白・末尾L除去、齋→斎・髙→高）して掃除の略称キーに対応づける
+const _norm = (s) => String(s || "").replace(/[\s　]/g, "").replace(/[lL]$/, "").replace(/齋/g, "斎").replace(/髙/g, "高");
+const FULL_NORM_TO_KEY = Object.keys(FULL_NAME).reduce((acc, k) => { acc[_norm(FULL_NAME[k])] = k; acc[_norm(k)] = k; return acc; }, {});
+// エリアid→優先度ランク、ランクの重み（S最優先）
+const AREA_RANK = AREAS.reduce((acc, a) => { acc[a.id] = a.rank; return acc; }, {});
+const RANK_W = { S: 0, A: 1, B: 2, C: 3 };
+
+// ルール
+const RULES = [
+  "実施日：毎週金曜日／30分固定",
+  "目的：大掃除ではなく、来客・スタッフが気持ちよく使える状態に戻す30分清掃",
+  "優先順位：Sランク ＞ Aランク ＞ Bランク ＞ Cランク",
+  "欠員時は無理に全部やらず、優先度が高い場所から対応する",
+  "2人担当の場所は同じ作業を2人でやらず、必ず役割を分ける（Aさん=汚れを取る／Bさん=物を整える）",
+  "最後の3分で見た目を確認。終わらない場合は来客導線と通路確保を優先する",
+  "ケルヒャーは30分以内で終わる範囲（外階段・エントランスの目立つ汚れ）のみ実施",
+];
+
+// 欠員時の対応ルール（マニュアル準拠）
+const ABSENCE_RULES = [
+  "Sランク：欠員時でも必ず対応（トイレ／外まわり・ゴミ／入口・窓）",
+  "Aランク：できるだけ実施（キッチン／発送台／屋内階段・通路）",
+  "Bランク：簡易対応で可（MTGスペース／デスクフロア）",
+  "Cランク：翌週または月1回清掃へ回して可（FBAルーム）",
+];
+
+// 基準日（この金曜を A グループの週とする）。元データ更新日 2026/4/13 の週の金曜。
+const BASE_FRIDAY = new Date(2026, 3, 17); // 2026-04-17 (金)
+
+// 指定日が属する週の金曜日を返す
+function fridayOf(date) {
+  const d = new Date(date);
+  const day = d.getDay(); // 0=日
+  // 金曜=5。その週の金曜にそろえる（日〜土を1週間とみなし金曜基準）
+  const diff = 5 - day;
+  d.setDate(d.getDate() + diff);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+// 基準金曜から何週離れているか → グループ index
+function autoGroupIndex(forDate) {
+  const f = fridayOf(forDate);
+  const base = fridayOf(BASE_FRIDAY);
+  const weeks = Math.round((f - base) / (7 * 24 * 3600 * 1000));
+  return ((weeks % 9) + 9) % 9;
+}
+
+function fmtDate(d) {
+  const wd = ["日", "月", "火", "水", "木", "金", "土"][d.getDay()];
+  return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}(${wd})`;
+}
+
+// 現在日時（時:分:秒つき）
+function fmtDateTime(d) {
+  const wd = ["日", "月", "火", "水", "木", "金", "土"][d.getDay()];
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日(${wd}) ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
+const STORAGE_KEY = "cleaning_roster_state_v1";
+
+function CleaningRoster() {
+  const [loaded, setLoaded] = useState(false);
+  const [today] = useState(new Date());
+  const [now, setNow] = useState(new Date()); // 現在日時（毎秒更新）
+
+  // 1秒ごとに現在時刻を更新
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // 表示中の週（金曜日の文字列）
+  const [weekFriday, setWeekFriday] = useState(fmtDate(fridayOf(new Date())));
+  // 手動選択グループ（null なら自動）
+  const [manualGroup, setManualGroup] = useState(null);
+  // メンバー名のリネームマップ {旧名: 新名}
+  const [renames, setRenames] = useState({});
+  // 削除（除外）する人
+  const [removed, setRemoved] = useState([]);
+  // 追加メンバー
+  const [added, setAdded] = useState([]);
+  // 今週の欠勤者（表示名ベース）
+  const [absent, setAbsent] = useState([]);
+  // 代替アサイン { "areaId-slotIndex": 代替者名 }
+  const [subs, setSubs] = useState({});
+  // 共有/個人 切替
+  const [shared, setShared] = useState(true);
+
+  const [newName, setNewName] = useState("");
+  const [tab, setTab] = useState("roster"); // roster | manage | rules
+
+  // 表示名の解決：手動リネーム > フルネーム表 > 略称そのまま
+  const disp = useCallback((name) => renames[name] || FULL_NAME[name] || name, [renames]);
+
+  // 全メンバー（表示名・除外反映）
+  const allMembers = [...INITIAL_MEMBERS, ...added]
+    .filter((n) => !removed.includes(n))
+    .map((n) => ({ raw: n, name: disp(n) }));
+
+  // ── 保存・読込 ──
+  const loadState = useCallback(async (useShared) => {
+    try {
+      const res = await sheetStorage.get(STORAGE_KEY);
+      if (res && res.value) {
+        const s = JSON.parse(res.value);
+        setManualGroup(s.manualGroup ?? null);
+        setRenames(s.renames ?? {});
+        setRemoved(s.removed ?? []);
+        setAdded(s.added ?? []);
+        setAbsent(s.absent ?? []);
+        setSubs(s.subs ?? {});
+        if (s.weekFriday) setWeekFriday(s.weekFriday);
+      }
+    } catch (e) {
+      // 未保存・キー無し → 初期状態のまま
+    }
+    setLoaded(true);
+  }, []);
+
+  const saveState = useCallback(async (useShared) => {
+    const payload = JSON.stringify({ manualGroup, renames, removed, added, absent, subs, weekFriday });
+    try {
+      await sheetStorage.set(STORAGE_KEY, payload);
+    } catch (e) {
+      console.error("保存に失敗", e);
+    }
+  }, [manualGroup, renames, removed, added, absent, subs, weekFriday]);
+
+  useEffect(() => { loadState(shared); }, []); // 初回
+
+  // 変更を1秒まとめてから保存（連続入力でも最後の状態だけ送る）
+  useEffect(() => {
+    if (!loaded) return;
+    const t = setTimeout(() => { saveState(shared); }, 1000);
+    return () => clearTimeout(t);
+  }, [manualGroup, renames, removed, added, absent, subs, weekFriday, shared, loaded, saveState]);
+
+  // 現在のグループ
+  const groupIdx = manualGroup != null ? manualGroup : autoGroupIndex(today);
+  const groupKey = GROUP_KEYS[groupIdx];
+  const isAuto = manualGroup == null;
+
+  // 次週・前週グループ
+  const nextKey = GROUP_KEYS[(groupIdx + 1) % 9];
+
+  // 欠勤トグル
+  const toggleAbsent = (name) => {
+    setAbsent((p) => (p.includes(name) ? p.filter((x) => x !== name) : [...p, name]));
+  };
+
+  // 代替セット
+  const setSub = (key, value) => {
+    setSubs((p) => {
+      const next = { ...p };
+      if (!value) delete next[key];
+      else next[key] = value;
+      return next;
+    });
+  };
+
+  // 今週グループでの各人の担当エリア数を集計（負荷計算用）
+  const loadCount = useCallback((gKey) => {
+    const cnt = {};
+    ROTATION[gKey].forEach((cell) => {
+      cell.forEach((rawName) => {
+        const n = disp(rawName);
+        cnt[n] = (cnt[n] || 0) + 1;
+      });
+    });
+    return cnt;
+  }, [disp]);
+
+  // 自動代替提案：出勤中 & 既存代打に未割当 & 元担当でない人から、負荷の軽い順に1名
+  const suggestSub = useCallback((gKey, takenSubs, excludeNames) => {
+    const baseLoad = loadCount(gKey);
+    const SUZUKI = disp("鈴木");
+    // 既に代打として割り当て済みの人数も負荷に加算
+    const subLoad = {};
+    Object.values(takenSubs).forEach((n) => { if (n) subLoad[n] = (subLoad[n] || 0) + 1; });
+    const candidates = allMembers
+      .filter((m) => !absent.includes(m.name))      // 欠勤者は除外
+      .filter((m) => !excludeNames.includes(m.name)) // このエリアの元担当は除外
+      .map((m) => ({
+        name: m.name,
+        load: (baseLoad[m.name] || 0) + (subLoad[m.name] || 0),
+      }))
+      // 負荷の軽い順 → 同点なら代替候補の鈴木を最優先
+      .sort((a, b) => (a.load - b.load) || ((b.name === SUZUKI ? 1 : 0) - (a.name === SUZUKI ? 1 : 0)));
+    return candidates.length ? candidates[0].name : "";
+  }, [allMembers, absent, loadCount, disp]);
+
+  // 週切替（手動グループ進行）
+  const advanceWeek = (dir) => {
+    const base = manualGroup != null ? manualGroup : autoGroupIndex(today);
+    setManualGroup(((base + dir) % 9 + 9) % 9);
+    // 欠勤・代替は週が変わるとリセット
+    setAbsent([]);
+    setSubs({});
+  };
+
+  const resetToAuto = () => {
+    setManualGroup(null);
+    setWeekFriday(fmtDate(fridayOf(new Date())));
+  };
+
+  // メンバー操作
+  const addMember = () => {
+    const n = newName.trim();
+    if (!n) return;
+    if ([...INITIAL_MEMBERS, ...added].includes(n)) { setNewName(""); return; }
+    setAdded((p) => [...p, n]);
+    setNewName("");
+  };
+  const removeMember = (raw) => {
+    setRemoved((p) => [...p, raw]);
+    setAbsent((p) => p.filter((x) => x !== disp(raw)));
+  };
+  const restoreMember = (raw) => setRemoved((p) => p.filter((x) => x !== raw));
+  const renameMember = (raw, to) => {
+    const t = to.trim();
+    const baseName = FULL_NAME[raw] || raw; // 既定の表示名
+    setRenames((p) => {
+      const next = { ...p };
+      if (!t || t === raw || t === baseName) delete next[raw];
+      else next[raw] = t;
+      return next;
+    });
+  };
+
+  const clearAbsence = () => { setAbsent([]); setSubs({}); };
+
+  // ── anew-shift のシフトから「本社にいない人」を自動で欠勤・不在にセット ──
+  const [shiftMsg, setShiftMsg] = useState("");
+  const [shiftBusy, setShiftBusy] = useState(false);
+  const loadShiftAbsence = useCallback(async () => {
+    setShiftBusy(true); setShiftMsg("シフトを確認中…");
+    try {
+      const mm = /(\d{4})\/(\d{1,2})\/(\d{1,2})/.exec(weekFriday || "");
+      const p = (n) => String(n).padStart(2, "0");
+      let dateStr;
+      if (mm) dateStr = `${mm[1]}-${p(mm[2])}-${p(mm[3])}`;
+      else { const fr = fridayOf(new Date()); dateStr = `${fr.getFullYear()}-${p(fr.getMonth() + 1)}-${p(fr.getDate())}`; }
+      const res = await fetch(ATTEND_URL + "?date=" + dateStr);
+      const j = await res.json();
+      if (!j || !j.ok) throw new Error((j && j.error) || "取得失敗");
+      const abs = [];
+      let unknown = 0;
+      (j.staff || []).forEach((s) => {
+        const key = FULL_NORM_TO_KEY[_norm(s.name)];
+        if (!key || removed.includes(key)) return; // 掃除メンバー外・削除済は対象外
+        if (s.present === false) abs.push(disp(key));
+        else if (s.present === null) unknown++;
+      });
+      setAbsent(abs);
+      setSubs({});
+      setShiftMsg(`✓ ${dateStr} のシフトを反映：本社不在 ${abs.length}名${unknown ? `（シフト未登録 ${unknown}名は手動でご確認ください）` : ""}。続けて「自動で代替を割当」を押してください。`);
+    } catch (e) {
+      setShiftMsg("シフト取得に失敗：" + (e.message || e) + "（anew-shift側の受け口デプロイ後に有効）");
+    }
+    setShiftBusy(false);
+  }, [weekFriday, disp, removed]);
+
+  // このグループで代替が必要なスロットが存在するか（欠勤 or 削除）
+  const needsAnySub = ROTATION[groupKey].some((cell) =>
+    cell.some((rawName) => absent.includes(disp(rawName)) || removed.includes(rawName))
+  );
+
+  // 欠勤・削除で空いた全エリアに自動で代替を提案・割当（S優先・C等は候補が尽きれば空きのまま）
+  const autoFillAll = () => {
+    const taken = {};
+    const next = {};
+    const holes = [];
+    ROTATION[groupKey].forEach((cell, ai) => {
+      const areaId = ROTATION_AREA_ORDER[ai];
+      const rank = AREA_RANK[areaId] || "C";
+      const exclude = cell.map(disp);
+      cell.forEach((rawName, slot) => {
+        const name = disp(rawName);
+        if (absent.includes(name) || removed.includes(rawName)) holes.push({ areaId, slot, rank, exclude });
+      });
+    });
+    // S→A→B→C の順に埋める（必ず実施のSから代替を確保）
+    holes.sort((a, b) => (RANK_W[a.rank] ?? 9) - (RANK_W[b.rank] ?? 9));
+    holes.forEach((h) => {
+      const pick = suggestSub(groupKey, taken, h.exclude);
+      if (pick) { const key = `${h.areaId}-${h.slot}`; next[key] = pick; taken[key] = pick; }
+      // 候補が尽きたエリア（主にC=翌週でも可）は空きのまま、無理に埋めない
+    });
+    setSubs(next);
+  };
+
+  // ── スタイル（ANEW実ブランド：鮮やかなグリーン × 白 × ブラック）──
+  const C = {
+    bg: "#ffffff",
+    panel: "#ffffff",
+    ink: "#1c1c1c",
+    sub: "#8b8f8c",
+    line: "#e8eae8",
+    accent: "#2faa56",
+    accentDark: "#23933f",
+    accentSoft: "#eaf7ee",
+    gold: "#2faa56",
+    goldSoft: "#eaf7ee",
+    warn: "#d64531",
+    warnSoft: "#fdece9",
+  };
+
+  if (!loaded) {
+    return (
+      <div style={{ fontFamily: "'Hiragino Kaku Gothic ProN', sans-serif", padding: 40, color: C.sub }}>
+        読み込み中…
+      </div>
+    );
+  }
+
+  return (
+    <div style={{
+      fontFamily: "'Hiragino Kaku Gothic ProN', 'Yu Gothic', sans-serif",
+      background: C.bg,
+      minHeight: "100vh",
+      color: C.ink,
+      padding: "0 0 60px",
+    }}>
+      {/* ヘッダー（ANEW実ブランド） */}
+      <header style={{
+        background: "#ffffff",
+        color: C.ink,
+        padding: "24px 26px 0",
+        position: "relative",
+      }}>
+        <div style={{ maxWidth: 1040, margin: "0 auto" }}>
+        {/* ロゴ（左）＋ 現在日時（右） */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <svg width="38" height="38" viewBox="0 0 40 40" aria-label="ANEW logo">
+              <polygon points="20,5 35,34 5,34" fill="none" stroke={C.accent} strokeWidth="2.4" />
+              <polygon points="20,18 27,34 13,34" fill={C.accent} opacity="0.92" />
+            </svg>
+            <span style={{
+              fontFamily: "'Century Gothic', 'Questrial', 'Trebuchet MS', sans-serif",
+              fontSize: 28, fontWeight: 400, letterSpacing: 1, color: C.ink,
+            }}>new</span>
+          </div>
+          {/* 現在日時 */}
+          <div style={{
+            textAlign: "right", lineHeight: 1.25,
+            background: C.accentSoft, padding: "7px 13px", borderRadius: 9,
+          }}>
+            <div style={{ fontSize: 10.5, color: C.accent, fontWeight: 700, letterSpacing: 1 }}>現在日時</div>
+            <div style={{
+              fontSize: 14, color: C.ink, fontWeight: 700,
+              fontVariantNumeric: "tabular-nums",
+            }}>{fmtDateTime(now)}</div>
+          </div>
+        </div>
+
+        {/* 見出し：太いサンセリフ英字（横並びで締める） */}
+        <div style={{
+          marginTop: 18, display: "flex", alignItems: "flex-end",
+          justifyContent: "space-between", flexWrap: "wrap", gap: 8,
+        }}>
+          <div style={{
+            fontFamily: "'Arial Black', 'Helvetica Neue', sans-serif",
+            fontSize: 30, fontWeight: 900, lineHeight: 1.05, letterSpacing: -0.5, color: C.ink,
+          }}>
+            WEEKLY CLEANING ROSTER
+          </div>
+          <div style={{ textAlign: "right" }}>
+            <div style={{ fontSize: 13.5, color: C.ink, letterSpacing: 0.5 }}>週次清掃当番表　—　毎週金曜 9:00–9:30</div>
+            <div style={{ fontSize: 12.5, color: C.sub, marginTop: 3 }}>今週の対象日：{weekFriday}</div>
+          </div>
+        </div>
+
+        {/* グリーンの帯 */}
+        <div style={{
+          marginTop: 16, height: 5,
+          background: `linear-gradient(90deg, ${C.accent} 0%, ${C.accentDark} 100%)`,
+          borderRadius: 3,
+        }} />
+        </div>
+      </header>
+
+      {/* タブ */}
+      <nav style={{
+        display: "flex", background: C.panel,
+        borderBottom: `1px solid ${C.line}`,
+        maxWidth: 1040, margin: "0 auto",
+      }}>
+        {[
+          ["roster", "今週の当番"],
+          ["manage", "メンバー管理"],
+          ["rules", "掃除ルール"],
+        ].map(([key, label]) => (
+          <button key={key} onClick={() => setTab(key)} style={{
+            flex: 1, padding: "15px 8px", border: "none", cursor: "pointer",
+            background: "transparent",
+            color: tab === key ? C.accent : C.sub,
+            fontWeight: tab === key ? 800 : 500,
+            fontSize: 14, letterSpacing: 1,
+            borderBottom: tab === key ? `3px solid ${C.accent}` : "3px solid transparent",
+            transition: "all .18s",
+          }}>{label}</button>
+        ))}
+      </nav>
+
+      <div style={{ maxWidth: 1040, margin: "0 auto", padding: "22px 16px" }}>
+
+        {/* ───── 今週の当番 ───── */}
+        {tab === "roster" && (
+          <>
+            {/* 週コントロール */}
+            <div style={{
+              background: C.panel, borderRadius: 14, padding: "16px 18px",
+              border: `1px solid ${C.line}`, marginBottom: 16,
+              boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+            }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", flexWrap: "wrap", gap: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <button onClick={() => advanceWeek(-1)} style={navBtn(C)}>← 前週</button>
+                  <div style={{ textAlign: "center", minWidth: 130 }}>
+                    <div style={{ fontSize: 12, color: C.sub, letterSpacing: 1 }}>今週のグループ</div>
+                    <div style={{
+                      fontFamily: "'Arial Black', 'Helvetica Neue', sans-serif",
+                      fontSize: 40, fontWeight: 900, color: C.accent, lineHeight: 1.05,
+                    }}>{groupKey}</div>
+                    <div style={{ fontSize: 11, color: isAuto ? C.accent : C.gold, marginTop: 3, fontWeight: 600 }}>
+                      {isAuto ? "● 日付から自動表示" : "✎ 手動で固定中"}
+                    </div>
+                  </div>
+                  <button onClick={() => advanceWeek(1)} style={navBtn(C)}>次週 →</button>
+                </div>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 12, color: C.sub }}>次回={nextKey}</span>
+                  {!isAuto && (
+                    <button onClick={resetToAuto} style={{
+                      ...miniBtn(C), background: C.accent, color: "#fff", borderColor: C.accent,
+                    }}>今週に戻す</button>
+                  )}
+                </div>
+              </div>
+
+              {/* グループ直接選択（中央寄せ） */}
+              <div style={{ marginTop: 14, display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center" }}>
+                {GROUP_KEYS.map((g, i) => (
+                  <button key={g} onClick={() => setManualGroup(i)} style={{
+                    width: 36, height: 36, borderRadius: 9, cursor: "pointer",
+                    border: `1px solid ${i === groupIdx ? C.gold : C.line}`,
+                    background: i === groupIdx ? C.gold : C.panel,
+                    color: i === groupIdx ? "#fff" : C.sub,
+                    fontWeight: 800, fontSize: 14,
+                  }}>{g}</button>
+                ))}
+              </div>
+            </div>
+
+            {/* 欠勤者選択 */}
+            <div style={{
+              background: C.panel, borderRadius: 14, padding: "16px 18px",
+              border: `1px solid ${C.line}`, marginBottom: 16,
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                <div style={{ fontWeight: 700, fontSize: 15 }}>
+                  今週の欠勤・不在
+                  {absent.length > 0 && (
+                    <span style={{ color: C.warn, marginLeft: 8, fontSize: 13 }}>{absent.length}名</span>
+                  )}
+                </div>
+                {needsAnySub && (
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button onClick={autoFillAll} style={{
+                      ...miniBtn(C), background: C.accent, color: "#fff", borderColor: C.accent,
+                    }}>自動で代替を割当</button>
+                    {absent.length > 0 && (
+                      <button onClick={clearAbsence} style={miniBtn(C)}>クリア</button>
+                    )}
+                  </div>
+                )}
+              </div>
+              <div style={{
+                display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center",
+                marginBottom: 12, paddingBottom: 12, borderBottom: `1px dashed ${C.line}`,
+              }}>
+                <button onClick={loadShiftAbsence} disabled={shiftBusy} style={{
+                  ...miniBtn(C), background: shiftBusy ? C.line : C.accentSoft,
+                  color: C.accentDark, borderColor: C.accent, fontWeight: 700,
+                  cursor: shiftBusy ? "default" : "pointer",
+                }}>{shiftBusy ? "確認中…" : "📅 シフトから欠勤を自動反映"}</button>
+                {shiftMsg && <span style={{ fontSize: 12, color: C.sub, flex: "1 1 200px" }}>{shiftMsg}</span>}
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+                {allMembers.map((m) => {
+                  const on = absent.includes(m.name);
+                  return (
+                    <button key={m.raw} onClick={() => toggleAbsent(m.name)} style={{
+                      padding: "6px 12px", borderRadius: 20, cursor: "pointer", fontSize: 13,
+                      border: `1px solid ${on ? C.warn : C.line}`,
+                      background: on ? C.warn : C.panel,
+                      color: on ? "#fff" : C.ink,
+                      fontWeight: on ? 700 : 500,
+                      textDecoration: on ? "line-through" : "none",
+                    }}>{m.name}</button>
+                  );
+                })}
+              </div>
+              <div style={{ fontSize: 12, color: C.sub, marginTop: 10 }}>
+                欠勤者を選ぶと、その人の担当エリアが赤くなり代替を選べます。
+              </div>
+            </div>
+
+            {/* エリア当番カード（広い画面では2列） */}
+            <div style={{
+              display: "grid", gap: 12,
+              gridTemplateColumns: "repeat(auto-fill, minmax(440px, 1fr))",
+            }}>
+              {AREAS.map((area) => {
+                // ROTATIONは旧番号①〜⑩順。area.idが旧番号に一致するので id-1 で担当者を引く
+                const assignedRaw = ROTATION[groupKey][area.id - 1];
+                const rankColor = RANK_COLOR(area.rank, C);
+                return (
+                  <div key={area.id} style={{
+                    background: C.panel, borderRadius: 14, overflow: "hidden",
+                    border: `1px solid ${C.line}`, boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+                  }}>
+                    <div style={{
+                      display: "flex", justifyContent: "space-between", alignItems: "center",
+                      padding: "12px 16px", background: "#fafbfa", borderBottom: `1px solid ${C.line}`,
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                        <span style={{
+                          fontSize: 12, fontWeight: 900, color: "#fff",
+                          background: rankColor, width: 22, height: 22, borderRadius: 6,
+                          display: "inline-flex", alignItems: "center", justifyContent: "center",
+                        }}>{area.rank}</span>
+                        <span style={{ fontWeight: 700, fontSize: 14.5 }}>{area.name}</span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ fontSize: 11, color: C.sub }}>{area.time}</span>
+                        <span style={{
+                          fontSize: 11, color: C.gold, background: C.goldSoft,
+                          padding: "3px 9px", borderRadius: 12, fontWeight: 700,
+                        }}>{area.need}名</span>
+                      </div>
+                    </div>
+                    <div style={{ padding: "12px 16px" }}>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                        {assignedRaw.map((rawName, slot) => {
+                          const name = disp(rawName);
+                          const isRemoved = removed.includes(rawName);
+                          const isAbsent = absent.includes(name);
+                          const subKey = `${area.id}-${slot}`;
+                          const sub = subs[subKey];
+                          const needSub = isAbsent || isRemoved;
+                          const spot = area.slots[slot] || area.slots[area.slots.length - 1];
+                          return (
+                            <div key={slot} style={{
+                              flex: "1 1 240px", minWidth: 220,
+                              border: `1px solid ${needSub ? C.warn : C.line}`,
+                              background: needSub ? C.warnSoft : "#fff",
+                              borderRadius: 10, padding: "10px 12px",
+                            }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                <span style={{
+                                  fontSize: 16, fontWeight: 700,
+                                  color: needSub ? C.warn : C.ink,
+                                  textDecoration: needSub ? "line-through" : "none",
+                                }}>{isRemoved ? `${name}(削)` : name}</span>
+                                {isAbsent && <span style={chip(C.warn)}>欠勤</span>}
+                                {isRemoved && <span style={chip(C.sub)}>削除済</span>}
+                              </div>
+
+                              {/* 場所・やること（名前の下） */}
+                              <div style={{ marginTop: 7 }}>
+                                <div style={{
+                                  display: "inline-block", fontSize: 11.5, fontWeight: 700,
+                                  color: C.accent, background: C.accentSoft,
+                                  padding: "3px 9px", borderRadius: 6, marginBottom: 6,
+                                }}>{spot.icon} {spot.place}</div>
+                                <div style={{ fontSize: 10.5, color: C.sub, fontWeight: 700, marginBottom: 2 }}>やること</div>
+                                <ul style={{ margin: 0, paddingLeft: 16, lineHeight: 1.5 }}>
+                                  {spot.tasks.map((t, ti) => (
+                                    <li key={ti} style={{ fontSize: 12, color: C.ink }}>{t}</li>
+                                  ))}
+                                </ul>
+                                {/* 詳細トグル */}
+                                <details style={{ marginTop: 6 }}>
+                                  <summary style={{
+                                    fontSize: 11, color: C.accent, cursor: "pointer", fontWeight: 600,
+                                    listStyle: "none", userSelect: "none",
+                                  }}>＋ 欠員時・やらないこと・完了基準</summary>
+                                  <div style={{ marginTop: 6, fontSize: 11.5 }}>
+                                    <DetailBlock label="欠員時の最低限" items={spot.minTasks} color={C.warn} C={C} />
+                                    <DetailBlock label="やらなくてよい" items={spot.skip} color={C.sub} C={C} />
+                                    <DetailBlock label="完了基準" items={spot.done} color={C.accent} C={C} />
+                                  </div>
+                                </details>
+                              </div>
+
+                              {needSub && (
+                                <div style={{ marginTop: 8 }}>
+                                  <div style={{ fontSize: 11, color: C.warn, marginBottom: 4, fontWeight: 600 }}>
+                                    → 代替者を選択
+                                  </div>
+                                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                                    <select value={sub || ""} onChange={(e) => setSub(subKey, e.target.value)} style={{
+                                      flex: 1, padding: "6px 8px", borderRadius: 7,
+                                      border: `1px solid ${C.line}`, fontSize: 13, background: "#fff",
+                                    }}>
+                                      <option value="">（未定）</option>
+                                      {allMembers
+                                        .filter((m) => !absent.includes(m.name))
+                                        .map((m) => (
+                                          <option key={m.raw} value={m.name}>{m.name}</option>
+                                        ))}
+                                    </select>
+                                    <button
+                                      onClick={() => setSub(subKey, suggestSub(groupKey, subs, assignedRaw.map(disp)))}
+                                      style={{ ...miniBtn(C), whiteSpace: "nowrap" }}
+                                    >提案</button>
+                                  </div>
+                                  {sub && (
+                                    <div style={{ marginTop: 6, fontSize: 13, color: C.accent, fontWeight: 700 }}>
+                                      代打：{sub}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+
+        {/* ───── メンバー管理 ───── */}
+        {tab === "manage" && (
+          <div style={{ display: "grid", gap: 16 }}>
+            <div style={{ background: C.panel, borderRadius: 14, padding: 18, border: `1px solid ${C.line}` }}>
+              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 12 }}>メンバー追加</div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && addMember()}
+                  placeholder="新しいメンバー名"
+                  style={{
+                    flex: 1, padding: "9px 12px", borderRadius: 8,
+                    border: `1px solid ${C.line}`, fontSize: 14,
+                  }}
+                />
+                <button onClick={addMember} style={{
+                  ...navBtn(C), background: C.accent, color: "#fff", borderColor: C.accent,
+                }}>追加</button>
+              </div>
+              <div style={{ fontSize: 12, color: C.sub, marginTop: 8 }}>
+                ※追加した人はローテーション表には自動で入りません。代替候補として選べるようになります。
+              </div>
+            </div>
+
+            <div style={{ background: C.panel, borderRadius: 14, padding: 18, border: `1px solid ${C.line}` }}>
+              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 12 }}>メンバー一覧（改名・削除）</div>
+              <div style={{ display: "grid", gap: 8 }}>
+                {[...INITIAL_MEMBERS, ...added].map((raw) => {
+                  const isRemoved = removed.includes(raw);
+                  return (
+                    <div key={raw} style={{
+                      display: "flex", alignItems: "center", gap: 8,
+                      padding: "8px 10px", borderRadius: 8,
+                      background: isRemoved ? "#f3f0ea" : "#fafaf7",
+                      border: `1px solid ${C.line}`,
+                      opacity: isRemoved ? 0.6 : 1,
+                    }}>
+                      <span style={{ fontSize: 12, color: C.sub, width: 40 }}>
+                        {INITIAL_MEMBERS.includes(raw) ? "元" : "追加"}
+                      </span>
+                      <input
+                        defaultValue={renames[raw] || FULL_NAME[raw] || raw}
+                        onBlur={(e) => renameMember(raw, e.target.value)}
+                        disabled={isRemoved}
+                        style={{
+                          flex: 1, padding: "6px 10px", borderRadius: 7,
+                          border: `1px solid ${C.line}`, fontSize: 14,
+                          background: isRemoved ? "#eee" : "#fff",
+                        }}
+                      />
+                      {isRemoved ? (
+                        <button onClick={() => restoreMember(raw)} style={miniBtn(C)}>復帰</button>
+                      ) : (
+                        <button onClick={() => removeMember(raw)} style={{
+                          ...miniBtn(C), color: C.warn, borderColor: C.warn,
+                        }}>削除</button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{ fontSize: 12, color: C.sub, marginTop: 10, lineHeight: 1.6 }}>
+                名前を変えて入力欄からフォーカスを外すと改名されます。削除した人は当番表で「(削)」と表示され、代替が必要になります。「復帰」で元に戻せます。
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ───── ルール ───── */}
+        {tab === "rules" && (
+          <div style={{ background: C.panel, borderRadius: 14, padding: 22, border: `1px solid ${C.line}` }}>
+            <div style={{
+              fontWeight: 900, fontSize: 19, marginBottom: 14, color: C.ink,
+              borderLeft: `4px solid ${C.accent}`, paddingLeft: 12, letterSpacing: 0.5,
+            }}>掃除ルール</div>
+            <ol style={{ margin: 0, paddingLeft: 20, lineHeight: 2, fontSize: 14 }}>
+              {RULES.map((r, i) => <li key={i}>{r}</li>)}
+            </ol>
+            <div style={{ marginTop: 20, paddingTop: 16, borderTop: `1px solid ${C.line}` }}>
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>欠員時の対応</div>
+              <ul style={{ margin: "0 0 16px", paddingLeft: 18, lineHeight: 1.7, fontSize: 13, color: C.sub }}>
+                {ABSENCE_RULES.map((r, i) => <li key={i}>{r}</li>)}
+              </ul>
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>各持ち場の作業（優先度順／1人1場所）</div>
+              <div style={{ display: "grid", gap: 12 }}>
+                {AREAS.map((a) => (
+                  <div key={a.id} style={{ fontSize: 13, lineHeight: 1.5 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 3 }}>
+                      <span style={{
+                        fontSize: 11, fontWeight: 900, color: "#fff",
+                        background: RANK_COLOR(a.rank, C), width: 20, height: 20, borderRadius: 5,
+                        display: "inline-flex", alignItems: "center", justifyContent: "center",
+                      }}>{a.rank}</span>
+                      <span style={{ fontWeight: 700 }}>{a.name}</span>
+                      <span style={{ fontSize: 11, color: C.sub }}>／{a.need}名・{a.time}</span>
+                    </div>
+                    {a.slots.map((s, si) => (
+                      <div key={si} style={{ color: C.sub, paddingLeft: 12 }}>
+                        <span style={{ color: C.accent, fontWeight: 700 }}>{s.icon} {s.place}</span>：{s.tasks.join("・")}
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* フッター：保存先 */}
+      <div style={{ maxWidth: 1040, margin: "0 auto", padding: "0 16px" }}>
+        <div style={{
+          fontSize: 12, color: C.sub, textAlign: "center", marginTop: 4,
+          background: C.panel, padding: "10px", borderRadius: 10, border: `1px solid ${C.line}`,
+        }}>
+          🔗 入力内容はGoogleスプレッドシートに全員共有で保存されます（誰かが更新すると、次に開いた人にも反映されます）。
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── 補助スタイル関数 ──
+function navBtn(C) {
+  return {
+    padding: "8px 14px", borderRadius: 9, cursor: "pointer",
+    border: `1px solid ${C.line}`, background: "#fff",
+    color: C.ink, fontSize: 13, fontWeight: 600,
+  };
+}
+function miniBtn(C) {
+  return {
+    padding: "5px 11px", borderRadius: 7, cursor: "pointer",
+    border: `1px solid ${C.line}`, background: "#fff",
+    color: C.sub, fontSize: 12, fontWeight: 600,
+  };
+}
+function chip(color) {
+  return {
+    fontSize: 10, color: "#fff", background: color,
+    padding: "2px 7px", borderRadius: 10, fontWeight: 700,
+  };
+}
+
+// 優先度ランクの色
+function RANK_COLOR(rank, C) {
+  switch (rank) {
+    case "S": return "#d64531"; // 赤＝最優先
+    case "A": return "#e08a1e"; // オレンジ
+    case "B": return C.accent;  // グリーン
+    case "C": return "#8b8f8c"; // グレー
+    default: return C.sub;
+  }
+}
+
+// 詳細ブロック（欠員時・やらないこと・完了基準）
+function DetailBlock({ label, items, color, C }) {
+  if (!items || !items.length) return null;
+  return (
+    <div style={{ marginTop: 5 }}>
+      <div style={{ fontSize: 10.5, fontWeight: 700, color }}>{label}</div>
+      <ul style={{ margin: "2px 0 0", paddingLeft: 16, lineHeight: 1.45 }}>
+        {items.map((t, i) => (
+          <li key={i} style={{ fontSize: 11, color: C.sub }}>{t}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+
+const rootEl = document.getElementById('root');
+ReactDOM.createRoot(rootEl).render(<CleaningRoster />);
+</script>
+</body>
+</html>
