@@ -232,6 +232,17 @@ const KEY_TO_ID = {
   "佐藤(望)": 17, "斎藤(恵)": 2, "斎藤(修)": 11, "越本": 1, "鈴木": 15,
 };
 
+// 雀宮倉庫の掃除でやること
+const WAREHOUSE_TASKS = [
+  "棚まわり・床の掃き掃除",
+  "ゴミ回収",
+  "在庫の通路はみ出しを戻す",
+  "段ボール・資材の整理",
+  "1F共有部分の整理",
+  "棚整理",
+  "商品収納",
+];
+
 // 男性メンバー（略称キー）。男子トイレは男性のみ／女子トイレは女性のみの縛りに使う。
 // これ以外の在籍メンバーは女性として扱う（追加メンバーは性別不明＝トイレ不可）。
 const MALE_KEYS = ["斎藤(恵)", "斎藤(修)", "越本", "鈴木"];
@@ -325,6 +336,8 @@ function CleaningRoster() {
   const [shiftAbsent, setShiftAbsent] = useState([]);
   // シフト連携の状態表示用 { loading, ok, date, count, error }
   const [shiftInfo, setShiftInfo] = useState({ loading: true, ok: false, date: "", count: 0, error: "" });
+  // その日 雀宮倉庫(location=雀宮)で勤務している人の名前リスト（雀宮倉庫の掃除担当）
+  const [warehouseToday, setWarehouseToday] = useState([]);
 
   const [newName, setNewName] = useState("");
   const [tab, setTab] = useState("roster"); // roster | manage | rules
@@ -390,17 +403,22 @@ function CleaningRoster() {
           setShiftInfo({ loading: false, ok: false, date: ds, count: 0, error: (j && j.error) || "取得失敗" });
           return;
         }
-        const presentById = {};
-        j.staff.forEach((s) => { presentById[s.id] = s.present; });
-        // ローテ参加メンバーのうち present===false（本社不在＝在宅/出張/休みなど）を欠勤候補に。
-        // present===null（シフト未登録）は自動では欠勤にしない（手動判断）。
+        const presentById = {}, locById = {};
+        j.staff.forEach((s) => { presentById[s.id] = s.present; locById[s.id] = s.location; });
+        // 本社の掃除に出られる＝ present===true かつ 勤務地が「本社」の人だけ。
+        // 雀宮倉庫(雀宮)・大宮など、本社以外で勤務の人は本社の掃除には入れない（＝欠勤扱い）。
+        // present===false（在宅/出張/休みなど）も欠勤。present===null（未登録）は手動判断。
         const out = [];
         [...INITIAL_MEMBERS, ...added].forEach((raw) => {
           const id = KEY_TO_ID[raw];
           if (id == null) return;
-          if (presentById[id] === false) out.push(disp(raw));
+          const p = presentById[id], loc = locById[id];
+          if (p === false || (p === true && loc && loc !== "本社")) out.push(disp(raw));
         });
+        // 雀宮倉庫で勤務している人（全スタッフから）。雀宮倉庫の掃除担当として表示。
+        const wh = j.staff.filter((s) => s.present === true && s.location === "雀宮").map((s) => s.name);
         setShiftAbsent(out);
+        setWarehouseToday(wh);
         setShiftInfo({ loading: false, ok: true, date: ds, count: out.length, error: "" });
       } catch (e) {
         if (alive) setShiftInfo({ loading: false, ok: false, date: ds, count: 0, error: String((e && e.message) || e) });
@@ -910,6 +928,37 @@ function CleaningRoster() {
                   </div>
                 );
               })}
+            </div>
+
+            {/* ───── 雀宮倉庫の掃除 ───── */}
+            <div style={{ marginTop: 22 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 12, fontWeight: 900, color: "#fff", background: "#2563eb", padding: "3px 9px", borderRadius: 6 }}>倉庫</span>
+                <span style={{ fontWeight: 800, fontSize: 16, color: C.ink }}>雀宮倉庫の掃除</span>
+                <span style={{ fontSize: 11.5, color: C.sub }}>（シフトの勤務地が「雀宮」の人が担当）</span>
+              </div>
+              <div style={{ background: C.panel, border: "1px solid #cdddff", borderRadius: 14, padding: "14px 16px", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
+                {!isAuto ? (
+                  <div style={{ fontSize: 13, color: C.sub }}>※前後の週を表示中はシフト連携を外しています（「今週に戻す」で表示されます）。</div>
+                ) : (
+                  <>
+                    <div style={{ fontSize: 11, color: C.sub, fontWeight: 700, marginBottom: 6 }}>今日の担当（雀宮勤務）</div>
+                    {warehouseToday.length ? (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+                        {warehouseToday.map((n, i) => (
+                          <span key={i} style={{ fontSize: 14, fontWeight: 700, color: "#1d4ed8", background: "#eef4ff", border: "1px solid #cdddff", borderRadius: 999, padding: "5px 12px" }}>{n}</span>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: 13, color: C.sub, marginBottom: 12 }}>今日は雀宮倉庫の勤務者がいません。</div>
+                    )}
+                    <div style={{ fontSize: 10.5, color: C.sub, fontWeight: 700, marginBottom: 2 }}>やること</div>
+                    <ul style={{ margin: 0, paddingLeft: 16, lineHeight: 1.6 }}>
+                      {WAREHOUSE_TASKS.map((t, i) => (<li key={i} style={{ fontSize: 12.5, color: C.ink }}>{t}</li>))}
+                    </ul>
+                  </>
+                )}
+              </div>
             </div>
           </>
         )}
