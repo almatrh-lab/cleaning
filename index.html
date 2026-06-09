@@ -187,15 +187,15 @@ const AREA_BY_ID = Object.fromEntries(AREAS.map((a) => [a.id, a]));
 // ローテーション表（A〜I × エリア1〜10）元データそのまま
 // 各セルは担当者名の配列
 const ROTATION = {
-  A: [["張田"], ["黄倉", "大城"], ["花岡", "荒井"], ["斎藤(恵)"], ["佐藤"], ["字見"], ["小林"], ["柏村"], ["常盤"], ["越本", "斎藤(修)"]],
-  B: [["黄倉"], ["大城", "花岡"], ["荒井", "佐藤"], ["越本"], ["字見"], ["小林"], ["柏村"], ["常盤"], ["張田"], ["斎藤(恵)", "斎藤(修)"]],
-  C: [["大城"], ["花岡", "荒井"], ["佐藤", "字見"], ["斎藤(修)"], ["小林"], ["柏村"], ["常盤"], ["張田"], ["黄倉"], ["斎藤(恵)", "越本"]],
-  D: [["花岡"], ["荒井", "佐藤"], ["字見", "小林"], ["斎藤(恵)"], ["柏村"], ["常盤"], ["張田"], ["黄倉"], ["大城"], ["越本", "斎藤(修)"]],
-  E: [["荒井"], ["佐藤", "字見"], ["小林", "柏村"], ["越本"], ["常盤"], ["張田"], ["黄倉"], ["大城"], ["花岡"], ["斎藤(恵)", "斎藤(修)"]],
-  F: [["佐藤"], ["字見", "小林"], ["常盤"], ["斎藤(修)"], ["張田"], ["黄倉"], ["大城"], ["花岡"], ["荒井"], ["斎藤(恵)", "越本"]],
-  G: [["字見"], ["小林", "柏村"], ["常盤", "張田"], ["斎藤(恵)"], ["黄倉"], ["大城"], ["花岡"], ["荒井"], ["佐藤"], ["越本", "斎藤(修)"]],
-  H: [["小林"], ["柏村", "常盤"], ["張田", "黄倉"], ["越本"], ["大城"], ["花岡"], ["荒井"], ["佐藤"], ["字見"], ["斎藤(恵)", "斎藤(修)"]],
-  I: [["柏村"], ["常盤", "張田"], ["黄倉", "大城"], ["斎藤(修)"], ["花岡"], ["荒井"], ["佐藤"], ["字見"], ["小林"], ["斎藤(恵)", "越本"]],
+  A: [["張田"], ["黄倉", "大城"], ["花岡", "荒井"], ["斎藤(恵)"], ["佐藤"], ["字見"], ["小林"], ["柏村"], ["佐藤(望)"], ["越本", "斎藤(修)"]],
+  B: [["黄倉"], ["大城", "花岡"], ["荒井", "佐藤"], ["越本"], ["字見"], ["小林"], ["柏村"], ["佐藤(望)"], ["張田"], ["斎藤(恵)", "斎藤(修)"]],
+  C: [["大城"], ["花岡", "荒井"], ["佐藤", "字見"], ["斎藤(修)"], ["小林"], ["柏村"], ["佐藤(望)"], ["張田"], ["黄倉"], ["斎藤(恵)", "越本"]],
+  D: [["花岡"], ["荒井", "佐藤"], ["字見", "小林"], ["斎藤(恵)"], ["柏村"], ["佐藤(望)"], ["張田"], ["黄倉"], ["大城"], ["越本", "斎藤(修)"]],
+  E: [["荒井"], ["佐藤", "字見"], ["小林", "柏村"], ["越本"], ["佐藤(望)"], ["張田"], ["黄倉"], ["大城"], ["花岡"], ["斎藤(恵)", "斎藤(修)"]],
+  F: [["佐藤"], ["字見", "小林"], ["佐藤(望)"], ["斎藤(修)"], ["張田"], ["黄倉"], ["大城"], ["花岡"], ["荒井"], ["斎藤(恵)", "越本"]],
+  G: [["字見"], ["小林", "柏村"], ["佐藤(望)", "張田"], ["斎藤(恵)"], ["黄倉"], ["大城"], ["花岡"], ["荒井"], ["佐藤"], ["越本", "斎藤(修)"]],
+  H: [["小林"], ["柏村", "佐藤(望)"], ["張田", "黄倉"], ["越本"], ["大城"], ["花岡"], ["荒井"], ["佐藤"], ["字見"], ["斎藤(恵)", "斎藤(修)"]],
+  I: [["柏村"], ["佐藤(望)", "張田"], ["黄倉", "大城"], ["斎藤(修)"], ["花岡"], ["荒井"], ["佐藤"], ["字見"], ["小林"], ["斎藤(恵)", "越本"]],
 };
 
 const GROUP_KEYS = ["A", "B", "C", "D", "E", "F", "G", "H", "I"];
@@ -212,7 +212,7 @@ const FULL_NAME = {
   "字見": "字見 千尋",
   "小林": "小林 優美",
   "柏村": "柏村 美智留",
-  "常盤": "常盤 琴音",
+  "佐藤(望)": "佐藤 望由",
   "斎藤(恵)": "斎藤 恵介",
   "斎藤(修)": "斎藤 修平",
   "越本": "越本 悠生",
@@ -220,16 +220,23 @@ const FULL_NAME = {
 };
 
 // 全メンバー初期リスト（略称キー）。鈴木はローテーション外の在籍メンバー。
-const INITIAL_MEMBERS = ["張田", "黄倉", "大城", "花岡", "荒井", "佐藤", "字見", "小林", "柏村", "常盤", "斎藤(恵)", "斎藤(修)", "越本", "鈴木"];
+const INITIAL_MEMBERS = ["張田", "黄倉", "大城", "花岡", "荒井", "佐藤", "字見", "小林", "柏村", "佐藤(望)", "斎藤(恵)", "斎藤(修)", "越本", "鈴木"];
 
-// ── anew-shift シフト連携 ──
-const ATTEND_URL = "https://anew-shift.vercel.app/api/attendance";
-// 氏名正規化（空白・末尾L除去、齋→斎・髙→高）して掃除の略称キーに対応づける
-const _norm = (s) => String(s || "").replace(/[\s　]/g, "").replace(/[lL]$/, "").replace(/齋/g, "斎").replace(/髙/g, "高");
-const FULL_NORM_TO_KEY = Object.keys(FULL_NAME).reduce((acc, k) => { acc[_norm(FULL_NAME[k])] = k; acc[_norm(k)] = k; return acc; }, {});
-// エリアid→優先度ランク、ランクの重み（S最優先）
-const AREA_RANK = AREAS.reduce((acc, a) => { acc[a.id] = a.rank; return acc; }, {});
-const RANK_W = { S: 0, A: 1, B: 2, C: 3 };
+// ── シフト自動反映 ──
+// anew-shift の出勤判定API。指定日に本社にいる人＝present:true を返す。
+const ATTENDANCE_URL = "https://anew-shift.vercel.app/api/attendance";
+// 掃除アプリの略称キー → anew-shift の社員ID（名前の表記ゆれを避けるためIDで突き合わせる）
+const KEY_TO_ID = {
+  "張田": 5, "黄倉": 6, "大城": 7, "花岡": 8, "荒井": 9,
+  "佐藤": 4, "字見": 14, "小林": 10, "柏村": 12,
+  "佐藤(望)": 17, "斎藤(恵)": 2, "斎藤(修)": 11, "越本": 1, "鈴木": 15,
+};
+
+// 男性メンバー（略称キー）。男子トイレは男性のみ／女子トイレは女性のみの縛りに使う。
+// これ以外の在籍メンバーは女性として扱う（追加メンバーは性別不明＝トイレ不可）。
+const MALE_KEYS = ["斎藤(恵)", "斎藤(修)", "越本", "鈴木"];
+// ランクの優先度（小さいほど高優先＝先に守る）
+const RANK_VAL = { S: 0, A: 1, B: 2, C: 3 };
 
 // ルール
 const RULES = [
@@ -314,6 +321,11 @@ function CleaningRoster() {
   // 共有/個人 切替
   const [shared, setShared] = useState(true);
 
+  // シフト連携：その金曜に本社にいない人（表示名の配列）。保存はしない（毎回シフトから取り直す）
+  const [shiftAbsent, setShiftAbsent] = useState([]);
+  // シフト連携の状態表示用 { loading, ok, date, count, error }
+  const [shiftInfo, setShiftInfo] = useState({ loading: true, ok: false, date: "", count: 0, error: "" });
+
   const [newName, setNewName] = useState("");
   const [tab, setTab] = useState("roster"); // roster | manage | rules
 
@@ -363,10 +375,113 @@ function CleaningRoster() {
     return () => clearTimeout(t);
   }, [manualGroup, renames, removed, added, absent, subs, weekFriday, shared, loaded, saveState]);
 
+  // シフト自動反映：今週の金曜に「本社にいない人」を anew-shift から取得して shiftAbsent に入れる
+  useEffect(() => {
+    let alive = true;
+    const fb = fridayOf(today);
+    const ds = `${fb.getFullYear()}-${String(fb.getMonth() + 1).padStart(2, "0")}-${String(fb.getDate()).padStart(2, "0")}`;
+    setShiftInfo({ loading: true, ok: false, date: ds, count: 0, error: "" });
+    (async () => {
+      try {
+        const res = await fetch(`${ATTENDANCE_URL}?date=${ds}`);
+        const j = await res.json();
+        if (!alive) return;
+        if (!j || !j.ok || !Array.isArray(j.staff)) {
+          setShiftInfo({ loading: false, ok: false, date: ds, count: 0, error: (j && j.error) || "取得失敗" });
+          return;
+        }
+        const presentById = {};
+        j.staff.forEach((s) => { presentById[s.id] = s.present; });
+        // ローテ参加メンバーのうち present===false（本社不在＝在宅/出張/休みなど）を欠勤候補に。
+        // present===null（シフト未登録）は自動では欠勤にしない（手動判断）。
+        const out = [];
+        [...INITIAL_MEMBERS, ...added].forEach((raw) => {
+          const id = KEY_TO_ID[raw];
+          if (id == null) return;
+          if (presentById[id] === false) out.push(disp(raw));
+        });
+        setShiftAbsent(out);
+        setShiftInfo({ loading: false, ok: true, date: ds, count: out.length, error: "" });
+      } catch (e) {
+        if (alive) setShiftInfo({ loading: false, ok: false, date: ds, count: 0, error: String((e && e.message) || e) });
+      }
+    })();
+    return () => { alive = false; };
+  }, [today, added, disp]);
+
   // 現在のグループ
   const groupIdx = manualGroup != null ? manualGroup : autoGroupIndex(today);
   const groupKey = GROUP_KEYS[groupIdx];
   const isAuto = manualGroup == null;
+
+  // 実効的な「出られない人」= 手動欠勤 ＋（今週を表示中のみ）シフト不在。
+  // 手動で前後の週を見ているときはシフト反映を外す（その週の実シフトとは限らないため）。
+  const outSet = new Set(absent);
+  if (isAuto) shiftAbsent.forEach((n) => outSet.add(n));
+  const isOut = (name) => outSet.has(name);
+  const outNames = Array.from(outSet);
+
+  // ── 繰り上げ（自動移動）計算 ──
+  // 欠員が出たら、低ランク(C→B)の人を高ランク(S・A)の空きへ「移動」させる（ダブらせない）。
+  // 元いた低ランクの場所は空く。S・Aを優先で守り、B・Cは人が足りなければ空ける。
+  // 男子トイレ(id4)＝男性のみ／女子トイレ(id5)＝女性のみ の縛りあり。
+  const genderOf = (raw) => MALE_KEYS.includes(raw) ? "M" : (INITIAL_MEMBERS.includes(raw) ? "F" : null);
+  const genderOK = (raw, req) => !req || genderOf(raw) === req;
+  const isOutRaw = (raw) => isOut(disp(raw)) || removed.includes(raw);
+
+  const roster = (() => {
+    // 全スロットを列挙
+    const slots = [];
+    AREAS.forEach((area) => {
+      const cell = ROTATION[groupKey][area.id - 1] || [];
+      cell.forEach((raw, slot) => {
+        slots.push({
+          key: `${area.id}-${slot}`, areaId: area.id, slot, rank: area.rank,
+          genderReq: area.id === 4 ? "M" : area.id === 5 ? "F" : null, raw,
+        });
+      });
+    });
+    // 初期の占有：本社不在・削除の人は空き
+    const occ = {};   // slotKey -> raw | null
+    const commit = {}; // raw -> slotKey（今その人が座っている枠）
+    slots.forEach((s) => {
+      if (isOutRaw(s.raw)) { occ[s.key] = null; }
+      else { occ[s.key] = s.raw; commit[s.raw] = s.key; }
+    });
+    // ベンチ：ローテに入っていない出勤メンバー（鈴木など）
+    const benchRaw = [...INITIAL_MEMBERS, ...added].filter((r) => !commit[r] && !isOutRaw(r));
+    const moved = {};            // raw -> { key, fromKey }
+    const movedOutKeys = new Set(); // 移動して空いた枠
+    // 空いている S→A の枠を順に埋める
+    const targets = slots
+      .filter((s) => occ[s.key] === null && (s.rank === "S" || s.rank === "A"))
+      .sort((a, b) => RANK_VAL[a.rank] - RANK_VAL[b.rank]);
+    targets.forEach((t) => {
+      const cands = [];
+      // ベンチ優先（src=99）
+      benchRaw.forEach((r) => { if (!moved[r] && genderOK(r, t.genderReq)) cands.push({ raw: r, src: 99 }); });
+      // 低ランクから繰り上げ（自分の枠より低優先のみ＝S/Aは守る）
+      slots.forEach((o) => {
+        if (moved[o.raw]) return;
+        if (occ[o.key] !== o.raw) return;            // すでに移動済み/空き
+        if (RANK_VAL[o.rank] <= RANK_VAL[t.rank]) return; // 同等以上は引き抜かない
+        if (!genderOK(o.raw, t.genderReq)) return;
+        cands.push({ raw: o.raw, src: RANK_VAL[o.rank] }); // Cほど src 大きい
+      });
+      if (!cands.length) return;
+      cands.sort((a, b) => b.src - a.src); // ベンチ→C→B の順
+      const pick = cands[0].raw;
+      const from = commit[pick] || null;
+      occ[t.key] = pick;
+      moved[pick] = { key: t.key, fromKey: from };
+      if (from) { occ[from] = null; movedOutKeys.add(from); }
+      commit[pick] = t.key;
+    });
+    return { occ, moved, movedOutKeys };
+  })();
+
+  // エリアIDから表示名（⑤など）を引く（移動元表示用）
+  const areaLabel = (areaId) => { const a = AREA_BY_ID[areaId]; return a ? a.name.slice(0, 1) : ""; };
 
   // 次週・前週グループ
   const nextKey = GROUP_KEYS[(groupIdx + 1) % 9];
@@ -401,21 +516,19 @@ function CleaningRoster() {
   // 自動代替提案：出勤中 & 既存代打に未割当 & 元担当でない人から、負荷の軽い順に1名
   const suggestSub = useCallback((gKey, takenSubs, excludeNames) => {
     const baseLoad = loadCount(gKey);
-    const SUZUKI = disp("鈴木");
     // 既に代打として割り当て済みの人数も負荷に加算
     const subLoad = {};
     Object.values(takenSubs).forEach((n) => { if (n) subLoad[n] = (subLoad[n] || 0) + 1; });
     const candidates = allMembers
-      .filter((m) => !absent.includes(m.name))      // 欠勤者は除外
+      .filter((m) => !outNames.includes(m.name))    // 欠勤・本社不在の人は除外
       .filter((m) => !excludeNames.includes(m.name)) // このエリアの元担当は除外
       .map((m) => ({
         name: m.name,
         load: (baseLoad[m.name] || 0) + (subLoad[m.name] || 0),
       }))
-      // 負荷の軽い順 → 同点なら代替候補の鈴木を最優先
-      .sort((a, b) => (a.load - b.load) || ((b.name === SUZUKI ? 1 : 0) - (a.name === SUZUKI ? 1 : 0)));
+      .sort((a, b) => a.load - b.load);
     return candidates.length ? candidates[0].name : "";
-  }, [allMembers, absent, loadCount, disp]);
+  }, [allMembers, outNames, loadCount]);
 
   // 週切替（手動グループ進行）
   const advanceWeek = (dir) => {
@@ -455,67 +568,10 @@ function CleaningRoster() {
     });
   };
 
-  const clearAbsence = () => { setAbsent([]); setSubs({}); };
+  const clearAbsence = () => { setAbsent([]); };
 
-  // ── anew-shift のシフトから「本社にいない人」を自動で欠勤・不在にセット ──
-  const [shiftMsg, setShiftMsg] = useState("");
-  const [shiftBusy, setShiftBusy] = useState(false);
-  const loadShiftAbsence = useCallback(async () => {
-    setShiftBusy(true); setShiftMsg("シフトを確認中…");
-    try {
-      const mm = /(\d{4})\/(\d{1,2})\/(\d{1,2})/.exec(weekFriday || "");
-      const p = (n) => String(n).padStart(2, "0");
-      let dateStr;
-      if (mm) dateStr = `${mm[1]}-${p(mm[2])}-${p(mm[3])}`;
-      else { const fr = fridayOf(new Date()); dateStr = `${fr.getFullYear()}-${p(fr.getMonth() + 1)}-${p(fr.getDate())}`; }
-      const res = await fetch(ATTEND_URL + "?date=" + dateStr);
-      const j = await res.json();
-      if (!j || !j.ok) throw new Error((j && j.error) || "取得失敗");
-      const abs = [];
-      let unknown = 0;
-      (j.staff || []).forEach((s) => {
-        const key = FULL_NORM_TO_KEY[_norm(s.name)];
-        if (!key || removed.includes(key)) return; // 掃除メンバー外・削除済は対象外
-        if (s.present === false) abs.push(disp(key));
-        else if (s.present === null) unknown++;
-      });
-      setAbsent(abs);
-      setSubs({});
-      setShiftMsg(`✓ ${dateStr} のシフトを反映：本社不在 ${abs.length}名${unknown ? `（シフト未登録 ${unknown}名は手動でご確認ください）` : ""}。続けて「自動で代替を割当」を押してください。`);
-    } catch (e) {
-      setShiftMsg("シフト取得に失敗：" + (e.message || e) + "（anew-shift側の受け口デプロイ後に有効）");
-    }
-    setShiftBusy(false);
-  }, [weekFriday, disp, removed]);
-
-  // このグループで代替が必要なスロットが存在するか（欠勤 or 削除）
-  const needsAnySub = ROTATION[groupKey].some((cell) =>
-    cell.some((rawName) => absent.includes(disp(rawName)) || removed.includes(rawName))
-  );
-
-  // 欠勤・削除で空いた全エリアに自動で代替を提案・割当（S優先・C等は候補が尽きれば空きのまま）
-  const autoFillAll = () => {
-    const taken = {};
-    const next = {};
-    const holes = [];
-    ROTATION[groupKey].forEach((cell, ai) => {
-      const areaId = ROTATION_AREA_ORDER[ai];
-      const rank = AREA_RANK[areaId] || "C";
-      const exclude = cell.map(disp);
-      cell.forEach((rawName, slot) => {
-        const name = disp(rawName);
-        if (absent.includes(name) || removed.includes(rawName)) holes.push({ areaId, slot, rank, exclude });
-      });
-    });
-    // S→A→B→C の順に埋める（必ず実施のSから代替を確保）
-    holes.sort((a, b) => (RANK_W[a.rank] ?? 9) - (RANK_W[b.rank] ?? 9));
-    holes.forEach((h) => {
-      const pick = suggestSub(groupKey, taken, h.exclude);
-      if (pick) { const key = `${h.areaId}-${h.slot}`; next[key] = pick; taken[key] = pick; }
-      // 候補が尽きたエリア（主にC=翌週でも可）は空きのまま、無理に埋めない
-    });
-    setSubs(next);
-  };
+  // 繰り上げで何件の移動が発生したか（バッジ表示用）
+  const moveCount = Object.keys(roster.moved).length;
 
   // ── スタイル（ANEW実ブランド：鮮やかなグリーン × 白 × ブラック）──
   const C = {
@@ -689,35 +745,39 @@ function CleaningRoster() {
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                 <div style={{ fontWeight: 700, fontSize: 15 }}>
                   今週の欠勤・不在
-                  {absent.length > 0 && (
-                    <span style={{ color: C.warn, marginLeft: 8, fontSize: 13 }}>{absent.length}名</span>
+                  {outNames.length > 0 && (
+                    <span style={{ color: C.warn, marginLeft: 8, fontSize: 13 }}>{outNames.length}名</span>
+                  )}
+                  {moveCount > 0 && (
+                    <span style={{ color: C.accent, marginLeft: 8, fontSize: 13 }}>／繰り上げ {moveCount}件</span>
                   )}
                 </div>
-                {needsAnySub && (
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <button onClick={autoFillAll} style={{
-                      ...miniBtn(C), background: C.accent, color: "#fff", borderColor: C.accent,
-                    }}>自動で代替を割当</button>
-                    {absent.length > 0 && (
-                      <button onClick={clearAbsence} style={miniBtn(C)}>クリア</button>
-                    )}
-                  </div>
+                {absent.length > 0 && (
+                  <button onClick={clearAbsence} style={miniBtn(C)}>手動分クリア</button>
                 )}
               </div>
+              {/* シフト連携の状態 */}
               <div style={{
-                display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center",
-                marginBottom: 12, paddingBottom: 12, borderBottom: `1px dashed ${C.line}`,
+                fontSize: 12, marginBottom: 10, padding: "8px 11px", borderRadius: 9,
+                background: shiftInfo.loading ? "#f4f6f4" : shiftInfo.ok ? C.accentSoft : C.warnSoft,
+                color: shiftInfo.loading ? C.sub : shiftInfo.ok ? C.accentDark : C.warn,
+                border: `1px solid ${shiftInfo.loading ? C.line : shiftInfo.ok ? C.accent : C.warn}`,
+                lineHeight: 1.5,
               }}>
-                <button onClick={loadShiftAbsence} disabled={shiftBusy} style={{
-                  ...miniBtn(C), background: shiftBusy ? C.line : C.accentSoft,
-                  color: C.accentDark, borderColor: C.accent, fontWeight: 700,
-                  cursor: shiftBusy ? "default" : "pointer",
-                }}>{shiftBusy ? "確認中…" : "📅 シフトから欠勤を自動反映"}</button>
-                {shiftMsg && <span style={{ fontSize: 12, color: C.sub, flex: "1 1 200px" }}>{shiftMsg}</span>}
+                {shiftInfo.loading
+                  ? "🔄 シフトを確認中…（今週金曜に本社にいない人を自動反映します）"
+                  : !isAuto
+                    ? "ℹ️ 前後の週を表示中はシフト自動反映を外しています（今週に戻すと反映されます）。"
+                    : shiftInfo.ok
+                      ? (shiftInfo.count > 0
+                          ? `✅ シフト反映：${shiftInfo.date} の金曜、本社にいない ${shiftInfo.count} 名を自動で欠勤にしました（在宅・出張・休みなど）。`
+                          : `✅ シフト反映：${shiftInfo.date} の金曜は、本社不在の人はいませんでした。`)
+                      : `⚠️ シフトを取得できませんでした（手動で欠勤を選んでください）：${shiftInfo.error || ""}`}
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
                 {allMembers.map((m) => {
-                  const on = absent.includes(m.name);
+                  const on = isOut(m.name);
+                  const byShift = isAuto && shiftAbsent.includes(m.name) && !absent.includes(m.name);
                   return (
                     <button key={m.raw} onClick={() => toggleAbsent(m.name)} style={{
                       padding: "6px 12px", borderRadius: 20, cursor: "pointer", fontSize: 13,
@@ -726,12 +786,13 @@ function CleaningRoster() {
                       color: on ? "#fff" : C.ink,
                       fontWeight: on ? 700 : 500,
                       textDecoration: on ? "line-through" : "none",
-                    }}>{m.name}</button>
+                    }}>{m.name}{byShift ? "（シフト）" : ""}</button>
                   );
                 })}
               </div>
-              <div style={{ fontSize: 12, color: C.sub, marginTop: 10 }}>
-                欠勤者を選ぶと、その人の担当エリアが赤くなり代替を選べます。
+              <div style={{ fontSize: 12, color: C.sub, marginTop: 10, lineHeight: 1.6 }}>
+                「（シフト）」はその日に本社にいない人（自動）。手動で欠勤を足すこともできます。<br />
+                欠員が出ると、低ランク(C→B)の人を自動でS・Aの空きへ<b>繰り上げ（移動）</b>します（ダブりません）。男子トイレは男性のみ／女子トイレは女性のみ。
               </div>
             </div>
 
@@ -771,85 +832,74 @@ function CleaningRoster() {
                     </div>
                     <div style={{ padding: "12px 16px" }}>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-                        {assignedRaw.map((rawName, slot) => {
-                          const name = disp(rawName);
-                          const isRemoved = removed.includes(rawName);
-                          const isAbsent = absent.includes(name);
-                          const subKey = `${area.id}-${slot}`;
-                          const sub = subs[subKey];
-                          const needSub = isAbsent || isRemoved;
+                        {assignedRaw.map((origRaw, slot) => {
+                          const key = `${area.id}-${slot}`;
+                          const origName = disp(origRaw);
+                          const effRaw = roster.occ[key];
+                          const occupied = !!effRaw;
+                          const movedOut = roster.movedOutKeys.has(key);
                           const spot = area.slots[slot] || area.slots[area.slots.length - 1];
+                          const mInfo = occupied ? roster.moved[effRaw] : null;
+                          const isMovedIn = !!(mInfo && mInfo.key === key);
+                          const fromArea = isMovedIn && mInfo.fromKey ? parseInt(mInfo.fromKey.split("-")[0], 10) : null;
+                          const goneTo = (!occupied && movedOut && roster.moved[origRaw]) ? parseInt(roster.moved[origRaw].key.split("-")[0], 10) : null;
+                          const origRemoved = removed.includes(origRaw);
+                          const byShift = isAuto && shiftAbsent.includes(origName) && !absent.includes(origName);
+                          const isSA = area.rank === "S" || area.rank === "A";
+                          // ボックスの色
+                          let bdr = C.line, bg = "#fff";
+                          if (isMovedIn) { bdr = C.accent; bg = C.accentSoft; }
+                          else if (!occupied && movedOut) { bdr = C.line; bg = "#f7f7f5"; }
+                          else if (!occupied) { bdr = C.warn; bg = C.warnSoft; }
+                          const showSpot = !(!occupied && movedOut); // 移動で空いた枠は作業内容を省略
                           return (
                             <div key={slot} style={{
                               flex: "1 1 240px", minWidth: 220,
-                              border: `1px solid ${needSub ? C.warn : C.line}`,
-                              background: needSub ? C.warnSoft : "#fff",
+                              border: `1px solid ${bdr}`, background: bg,
                               borderRadius: 10, padding: "10px 12px",
                             }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                <span style={{
-                                  fontSize: 16, fontWeight: 700,
-                                  color: needSub ? C.warn : C.ink,
-                                  textDecoration: needSub ? "line-through" : "none",
-                                }}>{isRemoved ? `${name}(削)` : name}</span>
-                                {isAbsent && <span style={chip(C.warn)}>欠勤</span>}
-                                {isRemoved && <span style={chip(C.sub)}>削除済</span>}
+                              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                                {occupied ? (
+                                  <>
+                                    <span style={{ fontSize: 16, fontWeight: 700, color: isMovedIn ? C.accentDark : C.ink }}>{disp(effRaw)}</span>
+                                    {isMovedIn && <span style={chip(C.accent)}>繰り上げ</span>}
+                                    {isMovedIn && <span style={{ fontSize: 10.5, color: C.sub }}>{fromArea ? `元：${areaLabel(fromArea)}` : "応援"}</span>}
+                                  </>
+                                ) : movedOut ? (
+                                  <span style={{ fontSize: 13.5, color: C.sub }}>空き<span style={{ fontSize: 11, marginLeft: 4 }}>（{origName} は{goneTo ? ` ${areaLabel(goneTo)}へ` : ""}繰り上げ）</span></span>
+                                ) : (
+                                  <>
+                                    <span style={{ fontSize: 16, fontWeight: 700, color: C.warn, textDecoration: "line-through" }}>{origRemoved ? `${origName}(削)` : origName}</span>
+                                    {origRemoved ? <span style={chip(C.sub)}>削除済</span> : <span style={chip(C.warn)}>{byShift ? "本社不在" : "欠勤"}</span>}
+                                    <span style={{ fontSize: 10.5, color: isSA ? C.warn : C.sub, fontWeight: 700 }}>{isSA ? "⚠ 代替なし" : "空き（低優先・省略可）"}</span>
+                                  </>
+                                )}
                               </div>
 
-                              {/* 場所・やること（名前の下） */}
-                              <div style={{ marginTop: 7 }}>
-                                <div style={{
-                                  display: "inline-block", fontSize: 11.5, fontWeight: 700,
-                                  color: C.accent, background: C.accentSoft,
-                                  padding: "3px 9px", borderRadius: 6, marginBottom: 6,
-                                }}>{spot.icon} {spot.place}</div>
-                                <div style={{ fontSize: 10.5, color: C.sub, fontWeight: 700, marginBottom: 2 }}>やること</div>
-                                <ul style={{ margin: 0, paddingLeft: 16, lineHeight: 1.5 }}>
-                                  {spot.tasks.map((t, ti) => (
-                                    <li key={ti} style={{ fontSize: 12, color: C.ink }}>{t}</li>
-                                  ))}
-                                </ul>
-                                {/* 詳細トグル */}
-                                <details style={{ marginTop: 6 }}>
-                                  <summary style={{
-                                    fontSize: 11, color: C.accent, cursor: "pointer", fontWeight: 600,
-                                    listStyle: "none", userSelect: "none",
-                                  }}>＋ 欠員時・やらないこと・完了基準</summary>
-                                  <div style={{ marginTop: 6, fontSize: 11.5 }}>
-                                    <DetailBlock label="欠員時の最低限" items={spot.minTasks} color={C.warn} C={C} />
-                                    <DetailBlock label="やらなくてよい" items={spot.skip} color={C.sub} C={C} />
-                                    <DetailBlock label="完了基準" items={spot.done} color={C.accent} C={C} />
-                                  </div>
-                                </details>
-                              </div>
-
-                              {needSub && (
-                                <div style={{ marginTop: 8 }}>
-                                  <div style={{ fontSize: 11, color: C.warn, marginBottom: 4, fontWeight: 600 }}>
-                                    → 代替者を選択
-                                  </div>
-                                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                                    <select value={sub || ""} onChange={(e) => setSub(subKey, e.target.value)} style={{
-                                      flex: 1, padding: "6px 8px", borderRadius: 7,
-                                      border: `1px solid ${C.line}`, fontSize: 13, background: "#fff",
-                                    }}>
-                                      <option value="">（未定）</option>
-                                      {allMembers
-                                        .filter((m) => !absent.includes(m.name))
-                                        .map((m) => (
-                                          <option key={m.raw} value={m.name}>{m.name}</option>
-                                        ))}
-                                    </select>
-                                    <button
-                                      onClick={() => setSub(subKey, suggestSub(groupKey, subs, assignedRaw.map(disp)))}
-                                      style={{ ...miniBtn(C), whiteSpace: "nowrap" }}
-                                    >提案</button>
-                                  </div>
-                                  {sub && (
-                                    <div style={{ marginTop: 6, fontSize: 13, color: C.accent, fontWeight: 700 }}>
-                                      代打：{sub}
+                              {showSpot && (
+                                <div style={{ marginTop: 7 }}>
+                                  <div style={{
+                                    display: "inline-block", fontSize: 11.5, fontWeight: 700,
+                                    color: C.accent, background: C.accentSoft,
+                                    padding: "3px 9px", borderRadius: 6, marginBottom: 6,
+                                  }}>{spot.icon} {spot.place}</div>
+                                  <div style={{ fontSize: 10.5, color: C.sub, fontWeight: 700, marginBottom: 2 }}>やること</div>
+                                  <ul style={{ margin: 0, paddingLeft: 16, lineHeight: 1.5 }}>
+                                    {spot.tasks.map((t, ti) => (
+                                      <li key={ti} style={{ fontSize: 12, color: C.ink }}>{t}</li>
+                                    ))}
+                                  </ul>
+                                  <details style={{ marginTop: 6 }}>
+                                    <summary style={{
+                                      fontSize: 11, color: C.accent, cursor: "pointer", fontWeight: 600,
+                                      listStyle: "none", userSelect: "none",
+                                    }}>＋ 欠員時・やらないこと・完了基準</summary>
+                                    <div style={{ marginTop: 6, fontSize: 11.5 }}>
+                                      <DetailBlock label="欠員時の最低限" items={spot.minTasks} color={C.warn} C={C} />
+                                      <DetailBlock label="やらなくてよい" items={spot.skip} color={C.sub} C={C} />
+                                      <DetailBlock label="完了基準" items={spot.done} color={C.accent} C={C} />
                                     </div>
-                                  )}
+                                  </details>
                                 </div>
                               )}
                             </div>
